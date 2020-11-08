@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
 
     residual_v = std::max(residual_v, val_v);
     residual_h = std::max(residual_h, val_g);
-    if (m < 30)
+    //if (m < 30)
       printf ("%i: (%.3e, %.3e) ", m, val_v, val_g);
   }
   printf("\n");
@@ -223,7 +223,9 @@ f0(double t, double x, const data & /*data*/)
 double
 f(double t, double x, const data &data)
 {
-  return rho(t, x) * u_t(t, x) + rho(t, x) * u(t, x) * u_x(t, x) + data.gamma * pow(rho(t, x), data.gamma - 1) * rho_x(t, x) - data.mu * u_xx(t, x);
+  return u_t(t, x) + u(t, x) * u_x(t, x) 
+    + data.gamma * pow(rho(t, x), data.gamma - 2) * rho_x(t, x)
+    - data.mu * u_xx(t, x)/rho(t,x);
   double p_tilde = data.C;
   double rhs = data.mu * exp(-g(t, x)) * u_xx(t, x);
   return u_t(t, x) + u(t, x) * u_x(t, x) + p_tilde * g_x(t, x) - rhs;
@@ -364,7 +366,7 @@ void scheme(const data &data, arr_t &V_curr, arr_t &H_curr, arr_t &V_next, arr_t
                     (fabs(V_curr[m]) - V_curr[m]) * H_next[m]
                   ) / (2. * h) - (mu / (h * h));
         }
-        V_next[m] = (H_next[m - 1] + H_next[m]) / 2 * f(t, x, data)
+        V_next[m] = (H_next[m - 1] + H_next[m]) / 2 * f(t + tau, x, data)
                     - gamma / (gamma - 1) * 
                       (H_next[m - 1] + H_next[m]) * 
                       (pow(H_next[m], gamma - 1.) - pow(H_next[m - 1], gamma - 1)) / (2 * h)
@@ -385,6 +387,22 @@ void scheme(const data &data, arr_t &V_curr, arr_t &H_curr, arr_t &V_next, arr_t
     a[M] = 0.;
     b[M] = 1.;
     V_next[M] = 0;
+    auto print_arr = [=] (arr_t &a) {
+      for (int i = 0; i< M+1; i++) {
+        printf ("%i: %.3e ", i, a[i]);
+      }
+      printf ("\n");
+    };
+    if (n == 500) {
+      printf ("a: \n");
+       print_arr (a);
+       printf ("b: \n");
+       print_arr (b);
+       printf ("c: \n");
+       print_arr (c);
+       printf("rhs: \n");
+       print_arr(V_next);
+    }
 
     /* === SOLVE SYSTEM FOR V === */
     tridiagonal_solve(a, b, c, V_next, M + 1);
@@ -394,8 +412,8 @@ void scheme(const data &data, arr_t &V_curr, arr_t &H_curr, arr_t &V_next, arr_t
     {
       double t = (n + 1) * tau;
       double x = m * h;
-      if (m%250 == 0)
-        printf ("V[%i] = %.3e -> %.3e\n", m, V_next[m], u(t,x));
+        // if (m%250 == 0)
+        //   printf ("V[%i] = %.3e -> %.3e\n", m, V_next[m], u(t,x));
       //V_next[m] = u(t, x);
     }
 
