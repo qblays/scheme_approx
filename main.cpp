@@ -42,13 +42,16 @@ double f(double t, double x, const data &d);
 
 #define PARAM_T 1
 #define PARAM_X 10
-double fabs (double d) {
+void fill_system_for_V(arr_t &a, arr_t &b, arr_t &c, arr_t &V_next, arr_t &V_curr, arr_t &H_next, arr_t &H_curr, int n, const  data &data);
+double fabs(double d)
+{
   return (d < 0) * (-d) + (d >= 0) * (d);
 }
 
 void tridiagonal_solve(arr_t &a, arr_t &b, arr_t &c, arr_t &d, int n);
 
 void scheme(const data &data, arr_t &V_curr, arr_t &G_curr, arr_t &V_next, arr_t &G_next);
+void scheme_1(const data &data, arr_t &V_curr, arr_t &G_curr, arr_t &V_next, arr_t &G_next);
 
 int main(int argc, char *argv[])
 {
@@ -108,11 +111,11 @@ int main(int argc, char *argv[])
   for (int m = 0; m < M; m++)
   {
     double t = 0.;
-    double x = m * data.h + data.h / 2;
+    double x = m * data.h + data.h / 2.;
     H_curr[m] = rho(t, x);
   }
 
-  scheme(data, V_curr, H_curr, V_next, H_next);
+  scheme_1(data, V_curr, H_curr, V_next, H_next);
 
   double t = N * data.tau;
   double residual_v = 0.;
@@ -123,18 +126,18 @@ int main(int argc, char *argv[])
 
     double x = m * data.h;
 
-    double app_v = V_curr[m];
-    double ori_v = u(t, x);
-    double val_v = fabs(app_v - ori_v);
-
     double app_g = H_curr[m];
     double ori_g = rho(t, x + data.h / 2.);
     double val_g = fabs(app_g - ori_g);
 
+    double app_v = V_curr[m];
+    double ori_v = u(t, x);
+    double val_v = fabs(app_v - ori_v);
+
     residual_v = std::max(residual_v, val_v);
     residual_h = std::max(residual_h, val_g);
     //if (m < 30)
-      printf ("%i: (%.3e, %.3e) ", m, val_v, val_g);
+    printf("%i: (%.3e, %.3e) ", m, val_v, val_g);
   }
   printf("\n");
 
@@ -223,12 +226,24 @@ f0(double t, double x, const data & /*data*/)
 double
 f(double t, double x, const data &data)
 {
-  return u_t(t, x) + u(t, x) * u_x(t, x) 
-    + data.gamma * pow(rho(t, x), data.gamma - 2) * rho_x(t, x)
-    - data.mu * u_xx(t, x)/rho(t,x);
-  double p_tilde = data.C;
-  double rhs = data.mu * exp(-g(t, x)) * u_xx(t, x);
-  return u_t(t, x) + u(t, x) * u_x(t, x) + p_tilde * g_x(t, x) - rhs;
+  // return u_t(t, x) + u(t, x) * rho_t(t,x) / rho(t,x)
+  //    + rho_x(t,x) * u(t,x) * u(t,x) / rho (t,x)
+  //    + 2 * u_x(t,x)
+  //    + data.gamma * pow(rho(t, x), data.gamma - 2) * rho_x(t, x)
+  //    - data.mu * u_xx(t, x)/rho(t,x);
+  return u_t(t, x) + u(t, x) * u_x(t, x) + data.gamma * pow(rho(t, x), data.gamma - 2) * rho_x(t, x) - data.mu * u_xx(t, x) / rho(t, x);
+}
+
+double
+sigma(double F_next, double F_curr, double V)
+{
+  return (V < 0) * (F_next) + (V >= 0) * (F_curr);
+}
+
+double
+back_diff_d(double f_curr, double f_prev, double h)
+{
+  return (f_curr - f_prev) / h;
 }
 
 /* ================================================================================================================== */
@@ -292,7 +307,7 @@ void scheme(const data &data, arr_t &V_curr, arr_t &H_curr, arr_t &V_next, arr_t
   double gamma = data.gamma;
 
   double mu = data.mu;
-  printf ("gamma= %.3e, mu = %.3e\n", data.gamma, data.mu);
+  printf("gamma= %.3e, mu = %.3e\n", data.gamma, data.mu);
   arr_t a(M + 1);
   arr_t b(M + 1);
   arr_t c(M + 1);
@@ -317,11 +332,11 @@ void scheme(const data &data, arr_t &V_curr, arr_t &H_curr, arr_t &V_next, arr_t
 
     // для отладки (точное значение)
     for (int m = 0; m < M; m++)
-      {
-        double t = (n + 1) * tau;
-        double x = m * h + h / 2;
-        H_next[m] = rho (t, x);
-      }
+    {
+      double t = (n + 1) * tau;
+      double x = m * h + h / 2;
+      H_next[m] = rho(t, x);
+    }
 
     /* === INIT SYSTEM FOR V === */
 
@@ -338,9 +353,10 @@ void scheme(const data &data, arr_t &V_curr, arr_t &H_curr, arr_t &V_next, arr_t
         if (m > 1)
         {
           a[m] = -(
-              (fabs(V_curr[m - 1]) + V_curr[m - 1]) * H_next[m - 2] + 
-              (fabs(V_curr[m]) + V_curr[m]) * H_next[m - 1]
-            ) / (4. * h) - (mu / (h * h));
+                     (fabs(V_curr[m - 1]) + V_curr[m - 1]) * H_next[m - 2] +
+                     (fabs(V_curr[m]) + V_curr[m]) * H_next[m - 1]) /
+                     (4. * h) -
+                 (mu / (h * h));
         }
         else
         {
@@ -348,29 +364,26 @@ void scheme(const data &data, arr_t &V_curr, arr_t &H_curr, arr_t &V_next, arr_t
           a[m] = -((fabs(V_curr[m]) + V_curr[m]) * H_next[m - 1]) / (2. * h) - (mu / (h * h));
           // a[m] = 0;
         }
-        b[m] = (
-                  (fabs(V_curr[m - 1]) - V_curr[m - 1] + fabs(V_curr[m]) + V_curr[m]) * H_next[m - 1] +
-                  (fabs(V_curr[m + 1]) + V_curr[m + 1] + fabs(V_curr[m]) - V_curr[m]) * H_next[m]
-               ) / (4 * h)
-               + (H_next[m - 1] + H_next[m]) / (2. * tau) + 2 * (mu / (h * h));
+        b[m] = ((fabs(V_curr[m - 1]) - V_curr[m - 1] + fabs(V_curr[m]) + V_curr[m]) * H_next[m - 1] +
+                (fabs(V_curr[m + 1]) + V_curr[m + 1] + fabs(V_curr[m]) - V_curr[m]) * H_next[m]) /
+                   (4 * h) +
+               (H_next[m - 1] + H_next[m]) / (2. * tau) + 2 * (mu / (h * h));
         if (m < M - 1)
         {
           c[m] = -(
-                    (fabs(V_curr[m]) - V_curr[m]) * H_next[m] + 
-                    (fabs(V_curr[m + 1]) - V_curr[m + 1]) * H_next[m + 1]
-                  ) / (4. * h) - (mu / (h * h));
+                     (fabs(V_curr[m]) - V_curr[m]) * H_next[m] +
+                     (fabs(V_curr[m + 1]) - V_curr[m + 1]) * H_next[m + 1]) /
+                     (4. * h) -
+                 (mu / (h * h));
         }
         else
         {
           c[m] = -(
-                    (fabs(V_curr[m]) - V_curr[m]) * H_next[m]
-                  ) / (2. * h) - (mu / (h * h));
+                     (fabs(V_curr[m]) - V_curr[m]) * H_next[m]) /
+                     (2. * h) -
+                 (mu / (h * h));
         }
-        V_next[m] = (H_next[m - 1] + H_next[m]) / 2 * f(t + tau, x, data)
-                    - gamma / (gamma - 1) * 
-                      (H_next[m - 1] + H_next[m]) * 
-                      (pow(H_next[m], gamma - 1.) - pow(H_next[m - 1], gamma - 1)) / (2 * h)
-                    + (H_curr[m-1] + H_curr[m]) * V_curr[m] / (2 * tau);
+        V_next[m] = (H_next[m - 1] + H_next[m]) / 2 * f(t + tau, x, data) - gamma / (gamma - 1) * (sigma(H_next[m], H_curr[m], V_curr[m])) * (pow(H_next[m], gamma - 1.) - pow(H_next[m - 1], gamma - 1)) / (h) + (H_curr[m - 1] + H_curr[m]) * V_curr[m] / (2 * tau);
       }
       else
       {
@@ -379,7 +392,7 @@ void scheme(const data &data, arr_t &V_curr, arr_t &H_curr, arr_t &V_next, arr_t
         b[m] = 1.;
         c[m] = 0.;
         V_next[m] = 0;
-        printf ("it happened %i times\n", count++);
+        printf("it happened %i times\n", count++);
       }
     }
 
@@ -387,21 +400,23 @@ void scheme(const data &data, arr_t &V_curr, arr_t &H_curr, arr_t &V_next, arr_t
     a[M] = 0.;
     b[M] = 1.;
     V_next[M] = 0;
-    auto print_arr = [=] (arr_t &a) {
-      for (int i = 0; i< M+1; i++) {
-        printf ("%i: %.3e ", i, a[i]);
+    auto print_arr = [=](arr_t &a) {
+      for (int i = 0; i < M + 1; i++)
+      {
+        printf("%i: %.3e ", i, a[i]);
       }
-      printf ("\n");
+      printf("\n");
     };
-    if (n == 500) {
-      printf ("a: \n");
-       print_arr (a);
-       printf ("b: \n");
-       print_arr (b);
-       printf ("c: \n");
-       print_arr (c);
-       printf("rhs: \n");
-       print_arr(V_next);
+    if (n == 500)
+    {
+      printf("a: \n");
+      print_arr(a);
+      printf("b: \n");
+      print_arr(b);
+      printf("c: \n");
+      print_arr(c);
+      printf("rhs: \n");
+      print_arr(V_next);
     }
 
     /* === SOLVE SYSTEM FOR V === */
@@ -411,13 +426,203 @@ void scheme(const data &data, arr_t &V_curr, arr_t &H_curr, arr_t &V_next, arr_t
     for (int m = 0; m <= M; m++)
     {
       double t = (n + 1) * tau;
-      double x = m * h;
-        // if (m%250 == 0)
-        //   printf ("V[%i] = %.3e -> %.3e\n", m, V_next[m], u(t,x));
+      double x = m * h + h / 2;
+      V_next[m] /= rho(t, x);
+      // if (m%250 == 0)
+      //   printf ("V[%i] = %.3e -> %.3e\n", m, V_next[m], u(t,x));
       //V_next[m] = u(t, x);
     }
 
     std::swap(V_curr, V_next);
     std::swap(H_curr, H_next);
   }
+}
+
+void scheme_1(const data &data, arr_t &V_curr, arr_t &H_curr, arr_t &V_next, arr_t &H_next)
+{
+  int N = data.N;
+  int M = data.M;
+  double tau = data.tau;
+  double h = data.h;
+  double gamma = data.gamma;
+
+  double mu = data.mu;
+  printf("gamma= %.3e, mu = %.3e\n", data.gamma, data.mu);
+  arr_t a(M + 1);
+  arr_t b(M + 1);
+  arr_t c(M + 1);
+
+  for (int n = 0; n < N; n++)
+  {
+    double t = n * tau;
+    /* === INIT SYSTEM FOR H === */
+
+    // first equation
+    for (int m = 0; m < M; m++)
+    {
+      double x = m * h + h / 2.;
+      //a[m] = -(V_curr[m] + fabs(V_curr[m])) / (2. * h);
+      //b[m] = 1. / tau + (V_curr[m + 1] + fabs(V_curr[m + 1]) - V_curr[m] + fabs(V_curr[m])) / (2. * h);
+      //c[m] = (V_curr[m + 1] - fabs(V_curr[m + 1])) / (2. * h);
+      a[m] = -(V_curr[m] + fabs(V_curr[m])) / (2. * h);
+      if (V_curr[m] >= 0)
+      {
+        b[m] = V_curr[m + 1] / h + 1. / tau;
+        c[m] = 0;
+      }
+      else
+      {
+        b[m] = -V_curr[m] / h + 1. / tau;
+        c[m] = V_curr[m + 1] / h;
+      }
+
+      H_next[m] = H_curr[m] / tau + f0(t, x, data);
+    }
+
+    /* === SOLVE SYSTEM FOR H === */
+    tridiagonal_solve(a, b, c, H_next, M);
+
+    // для отладки (точное значение)
+    for (int m = 0; m < M; m++)
+    {
+      double t = (n + 1) * tau;
+      double x = m * h + h / 2.;
+      // H_next[m] = rho (t, x);
+    }
+
+    /* === INIT SYSTEM FOR V === */
+    fill_system_for_V(a, b, c, V_next, V_curr, H_next, H_curr, n, data);
+    // first equation
+    //    a[0] = 0;
+    //    b[0] = 1.;
+    //    c[0] = 0.;
+    //    V_next[0] = 0;
+    //    if (fabs (t - 0.75) < 1e-13) {
+    //      printf ("we are here\n");
+    //    }
+    //    for (int m = 1; m < M; m++)
+    //    {
+    //      double x = m * h;
+    //      if (fabs(H_next[m - 1] + H_next[m]) > 1e-14)
+    //      {
+    //        double v = V_curr[m];
+    //        if (fabs (v) < 1e-13){
+    //          printf("pisdetz v = %.5e, m = %i, t=%.3e\n", v, m, t);
+    //          v = -1e-8;
+    //        }
+    //        double av = fabs (v);
+    //        double vf = V_curr[m+1];
+    //        if (fabs (vf) < 1e-16){
+    //          vf = -1e-8;
+    //        }
+    //        double avf  = fabs (vf);
+    //        double vb = V_curr[m-1];
+    //        double H = H_next[m];
+    //        double Hf = H_next[m+1 == M? m: m+1];
+    //        double Hb = H_next[m-1];
+    //        double pf = Hf * (avf - vf);
+    //        double pb = Hb*(av + v);
+    //        b[m] = (vf/(4*avf * h) * (pf + Hb * (avf + vf))
+    //                -v/(4*av  * h) * (H * (av - v) + pb));
+    //        a[m] = -v /(2*av  * h) * (H * (av - v) + pb);
+    //        c[m] =  vf/(2*avf * h) * (pf + H * (avf + vf));
+    //
+    //        b[m] += 2 *mu/(h*h);
+    //        a[m] +=-1 *mu/(h*h);
+    //        c[m] +=-1 *mu/(h*h);
+    //
+    //        b[m] += (Hb + H)/ (2*tau);
+    //
+    //        V_next[m] = - gamma/(gamma - 1)* (H+Hb)*(pow(H, gamma-1) - pow(Hb, gamma-1))/(2.*h)
+    //                    + (H + Hb) * f(t, x, data) / 2.
+    //                    + (H_curr[m] + H_curr[m-1])* v/(2*tau);
+    //      }
+    //      else
+    //      {
+    //        static int count = 0;
+    //        a[m] = 0;
+    //        b[m] = 1.;
+    //        c[m] = 0.;
+    //        V_next[m] = 0;
+    //        printf ("it happened %i times\n", count++);
+    //      }
+    //    }
+    //
+    //    // last equation
+    //    a[M] = 0.;
+    //    b[M] = 1.;
+    //    c[M] = 0;
+    //    V_next[M] = 0;
+    //    auto print_arr = [=] (arr_t &a) {
+    //      for (int i = 0; i< M+1; i++) {
+    //        printf ("%i: %.3e ", i, a[i]);
+    //      }
+    //      printf ("\n");
+    //    };
+    //    if (n == 0) {
+    //      printf ("a: \n");
+    //       print_arr (a);
+    //       printf ("b: \n");
+    //       print_arr (b);
+    //       printf ("c: \n");
+    //       print_arr (c);
+    //       printf("rhs: \n");
+    //       print_arr(V_next);
+    //    }
+
+    /* === SOLVE SYSTEM FOR V === */
+    tridiagonal_solve(a, b, c, V_next, M + 1);
+
+    //для отладки (точное значение)
+    for (int m = 0; m < M; m++)
+    {
+      double t = (n + 1) * tau;
+      double x = m * h;
+      // if (m%250 == 0)
+      //   printf ("V[%i] = %.3e -> %.3e\n", m, V_next[m], u(t,x));
+      //V_next[m] = u(t, x);
+      // if (fabs (V_next[m]) < 1e-13){
+      //     printf("pisdetz v = %.5e, t=%.3e, x=%.3e\n", V_next[m], t, x);
+      //   }
+    }
+
+    std::swap(V_curr, V_next);
+    std::swap(H_curr, H_next);
+  }
+}
+
+void fill_system_for_V(arr_t &a, arr_t &b, arr_t &c, arr_t &V_next, arr_t &V_curr, arr_t &H_next, arr_t &H_curr, int n, const data &data)
+{
+  int N = data.N;
+  int M = data.M;
+  double tau = data.tau;
+  double h = data.h;
+  double gamma = data.gamma;
+  double mu = data.mu;
+
+  a[0] = 0;
+  b[0] = 1.;
+  c[0] = 0.;
+  V_next[0] = 0;
+  for (int m = 1; m < M; m++)
+  {
+    double Hs = H_next[m] + H_next[m - 1];
+    V_next[m] = V_curr[m] / tau - gamma / (gamma - 1) * (pow(H_next[m], gamma - 1) - pow(H_next[m - 1], gamma - 1)) / h + f(n * tau, h * m, data);
+    if (V_curr[m] >= 0.)
+    {
+      a[m] = -V_curr[m] / h - 2 * mu / (h * h * Hs);
+      b[m] = 1. / tau + V_curr[m] / h + 4 * mu / (h * h * Hs);
+      c[m] = -2 * mu / (h * h * Hs);
+    }
+    else
+    {
+      a[m] = -2 * mu / (h * h * Hs);
+      b[m] = 1. / tau - V_curr[m] / h + 4 * mu / (h * h * Hs);
+      c[m] = V_curr[m] / h - 2 * mu / (h * h * Hs);
+    }
+  }
+  a[M] = 0;
+  b[M] = 1.;
+  c[M] = 0.;
+  V_next[M] = 0;
 }
