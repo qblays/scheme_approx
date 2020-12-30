@@ -1,0 +1,9 @@
+[submodule "ctpl"]
+	path = ctpl
+	url = https://github.com/vit-vit/ctpl
+[submodule "matplotlib-cpp"]
+	path = matplotlib-cpp
+	url = https://github.com/lava/matplotlib-cpp
+[submodule "matplotplusplus"]
+	path = matplotplusplus
+	url = https://github.com/alandefreitas/matplotplusplus
