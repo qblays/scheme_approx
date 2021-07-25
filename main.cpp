@@ -10,12 +10,6 @@
 namespace po = boost::program_options;
 int main(int argc, char *argv[])
 {
-
-  //if (argc != 5)
-  //{
-    //fprintf(stderr, "Use: %s mu gamma M N\n", argv[0]);
-    //return -1;
-  //}
   po::options_description general("Allowed options");
   general.add_options()
 	("help", "produce help message")
@@ -66,7 +60,7 @@ int main(int argc, char *argv[])
   po::store(po::parse_command_line(argc, argv, all), vm);
   po::notify(vm);    
 
-  if (vm.count("help")) {
+  if (vm.count("help") || vm.size() == 0) {
 		std::cout << general << '\n';
 		return 0;
   }
