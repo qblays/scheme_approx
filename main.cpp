@@ -99,6 +99,7 @@ int main(int argc, char *argv[])
 		data data;
 		data.T = PARAM_T;
 		data.X = PARAM_X;
+
 		if (!presence_check ({ "M", "N", "mu", "gamma" }))
 		{
 			return 1;
